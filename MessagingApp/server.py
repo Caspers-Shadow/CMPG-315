@@ -21,8 +21,7 @@ def handle_client(conn, addr):
 			print(f"[{addr}] {msg}")
 			# Broadcast to all clients
 			for client in clients:
-				if client != conn:
-					client.sendall(msg.encode('utf-8'))
+				client.sendall(msg.encode('utf-8'))
 	except:
 		pass
 	finally:
