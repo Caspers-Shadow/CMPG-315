@@ -2,29 +2,34 @@
 # server.py
 import socket
 import threading
-import requests  # Added missing import
 
 HOST = '0.0.0.0'  # Listen on all interfaces
 PORT = 12345
 clients = {}  # key = username, value = socket
 
-def get_public_ip():
+def get_local_ip():
+    """Get the local IP address of the server"""
     try:
-        return requests.get('https://api.ipify.org').text  # Fixed URL format
+        # Create a temporary socket to determine the local IP
+        temp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        temp_socket.connect(("8.8.8.8", 80))  # Connect to Google's DNS
+        local_ip = temp_socket.getsockname()[0]
+        temp_socket.close()
+        return local_ip
     except Exception as e:
-        print(f"Error getting public IP: {e}")
-        return "Could not retrieve public IP"
+        print(f"Error getting local IP: {e}")
+        return "127.0.0.1"  # Return localhost if failed
 
 def handle_client(conn, addr):
     print(f"[NEW CONNECTION] {addr} connected.")
     username = None
-    
+   
     try:
         # Get username stuff
         username = conn.recv(1024).decode('utf-8').strip()
         clients[username] = conn
         print(f"[REGISTERED] {username} connected from {addr}")
-        
+       
         # Announce new user
         announcement = f"*** {username} has joined the chat ***"
         for client_conn in clients.values():
@@ -48,14 +53,16 @@ def handle_client(conn, addr):
             del clients[username]
             for client_conn in clients.values():
                 client_conn.sendall(leave_msg.encode('utf-8'))
-                
+               
         print(f"[DISCONNECT] {addr} disconnected.")
         conn.close()
        
 def start_server():
-    public_ip = get_public_ip()
+    local_ip = get_local_ip()
     print(f"[STARTING] Server is starting")
-    print(f"[PUBLIC IP] Share this with clients: {public_ip}")
+    print(f"[LOCAL IP] Share this with clients on your network: {local_ip}")
+    print(f"[NOTE] Clients should use this IP: {local_ip} in their connection code")
+    
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow reuse of address
     server.bind((HOST, PORT))
