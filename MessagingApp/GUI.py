@@ -9,11 +9,7 @@ class ClientClientGUI:
         self.master = master
         master.title("Chat Client")
         
-        # Get server IP from user
-        self.server_ip = simpledialog.askstring("Server IP", "Enter the server IP address")
-        if not self.server_ip:
-            messagebox.showerror("Error", "No IP address provided. Using localhost.")
-            self.server_ip = "127.0.0.1"
+        self.server_ip = "192.168.0.26"
             
         # Get username from user
         self.name = simpledialog.askstring("Username", "Enter your name")
