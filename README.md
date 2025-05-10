@@ -17,7 +17,7 @@ What to expect from this repository:
 - 43054226 - Mariska Adriaanzen : [@Caspers-Shadow](https://github.com/Caspers-Shadow)
 - 45983690 - Marnus De Beer: [@Mannus111](https://github.com/Mannus111)
 - 38655349 - Christoffel Schoeman [@Pantoffel24](https://github.com/Pantoffel24e)
-- 38410737 - Ethan :[@BanJovie](https://github.com/BanJovie)
+- 38410737 - Ethan Sutherland:[@BanJovie](https://github.com/BanJovie)
 - 30054834 - Cecilia Theunissen [@liat1604](https://github.com/liat1604)
 
 
