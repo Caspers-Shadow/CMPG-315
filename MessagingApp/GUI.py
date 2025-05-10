@@ -18,8 +18,12 @@ class ClientClientGUI:
         self.entry.bind("<Return>", self.send_message)
 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.connect(("127.0.0.1",12345))
+        self.sock.connect(("192.168.0.38",12345))
 
+        #Send username data first
+        self.sock.sendall(self.name.encode('utf-8'))
+
+        #Start receiving thread
         threading.Thread(target = self.receive_message, daemon = True).start()
 
     def send_message(self, event = None):

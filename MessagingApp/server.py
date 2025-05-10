@@ -7,26 +7,32 @@ import threading
 HOST = '0.0.0.0'  # Listen on all interfaces
 PORT = 12345
 
-clients = []
+clients = {} #key = username, value = socket
 
 def handle_client(conn, addr):
+
 	print(f"[NEW CONNECTION] {addr} connected.")
-	clients.append(conn)
-	
+
 	try:
+	#Get username stuff
+		username = conn.recv(1024).decode('utf-8').strip()
+		clients[username] = conn
+		print(f"[REGISTERED] {username}	connected from {addr}")
+	
 		while True:
 			msg = conn.recv(1024).decode('utf-8')
 			if not msg:
 				break
 			print(f"[{addr}] {msg}")
 			# Broadcast to all clients
-			for client in clients:
-				client.sendall(msg.encode('utf-8'))
+			for client_conn in clients.values():
+				client_conn.sendall(msg.encode('utf-8'))
 	except:
 		pass
 	finally:
+		if username in clients:
+			del clients[username]
 		print(f"[DISCONNECT] {addr} disconnected.")
-		clients.remove(conn)
 		conn.close()
 		
 def start_server():
