@@ -3,6 +3,7 @@ from tkinter.scrolledtext import ScrolledText
 from tkinter import simpledialog, messagebox
 import threading
 import socket
+from collections import defaultdict
 
 class ClientClientGUI:
     def __init__(self, master):
@@ -35,6 +36,9 @@ class ClientClientGUI:
         # Current chat target
         self.current_chat = "Group Chat"
 
+        # Dictionary to store chat histories for each conversation
+        self.chat_histories = defaultdict(list)
+        
         # Right panel
         self.right_panel = tk.Frame(self.frame)
         self.right_panel.pack(side='right', fill='both', expand=True)
@@ -68,6 +72,9 @@ class ClientClientGUI:
                                   relief=tk.SUNKEN, anchor=tk.W)
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
+        # Initialize unread message counter
+        self.unread_messages = defaultdict(int)
+
         self.connect_to_server()
     
     def change_chat(self, event=None):
@@ -79,10 +86,24 @@ class ClientClientGUI:
             # Only update if there's a change
             if previous_chat != self.current_chat:
                 self.chat_name_var.set(self.current_chat)
-                self.chat_box.configure(state='normal')
-                self.chat_box.insert(tk.END, f"\n--- Now chatting with {self.current_chat} ---\n")
-                self.chat_box.see(tk.END)
-                self.chat_box.configure(state='disabled')
+                
+                # Clear unread message count for this chat
+                self.unread_messages[self.current_chat] = 0
+                self.update_chat_list_display()
+                
+                # Load this chat's history
+                self.load_chat_history(self.current_chat)
+    
+    def load_chat_history(self, chat_name):
+        """Load the chat history for the specified chat into the chat box"""
+        self.chat_box.configure(state='normal')
+        self.chat_box.delete(1.0, tk.END)
+        
+        for message in self.chat_histories[chat_name]:
+            self.chat_box.insert(tk.END, message + '\n')
+        
+        self.chat_box.see(tk.END)
+        self.chat_box.configure(state='disabled')
     
     def connect_to_server(self):
         try:
@@ -109,20 +130,79 @@ class ClientClientGUI:
             if self.current_chat == "Group Chat":
                 msg = f"{self.name}: {message_text}"
                 self.sock.sendall(msg.encode('utf-8'))
+                
+                # Add message to local chat history
+                self.add_message_to_history("Group Chat", f"You: {message_text}")
             else:
                 # Format for private message
                 msg = f"@{self.current_chat}: {message_text}"
                 self.sock.sendall(msg.encode('utf-8'))
+                
+                # Add message to local chat history
+                self.add_message_to_history(self.current_chat, f"You: {message_text}")
             
             self.entry.delete(0, tk.END)
         except Exception as e:
-            self.chat_box.configure(state='normal')
-            self.chat_box.insert(tk.END, f"[Error] Could not send message: {e}\n")
-            self.chat_box.see(tk.END)
-            self.chat_box.configure(state='disabled')
+            error_msg = f"[Error] Could not send message: {e}"
+            self.add_message_to_history(self.current_chat, error_msg)
             self.status_var.set("Disconnected")
         
         return "break"  # Stops default Enter key behavior
+
+    def add_message_to_history(self, chat_name, message):
+        """Add a message to the specified chat history and update display if it's the current chat"""
+        self.chat_histories[chat_name].append(message)
+        
+        # If this is the current chat, update the display
+        if chat_name == self.current_chat:
+            self.chat_box.configure(state='normal')
+            self.chat_box.insert(tk.END, message + '\n')
+            self.chat_box.see(tk.END)
+            self.chat_box.configure(state='disabled')
+        else:
+            # Increment unread message counter
+            self.unread_messages[chat_name] += 1
+            self.update_chat_list_display()
+    
+    def update_chat_list_display(self):
+        """Update the listbox display to show unread message counts"""
+        selected_index = self.chat_listbox.curselection()
+        current_selection = None
+        if selected_index:
+            current_selection = self.chat_listbox.get(selected_index[0])
+        
+        # Remember all items
+        items = [self.chat_listbox.get(i) for i in range(self.chat_listbox.size())]
+        clean_items = {}
+        
+        # Clean up item names (remove unread count)
+        for item in items:
+            clean_name = item.split(" (")[0]  # Remove any " (N)" suffix
+            clean_items[clean_name] = item
+        
+        # Update items with unread counts
+        for i in range(self.chat_listbox.size()):
+            item_name = self.chat_listbox.get(i).split(" (")[0]  # Get name without unread count
+            unread = self.unread_messages[item_name]
+            
+            if unread > 0:
+                new_text = f"{item_name} ({unread})"
+            else:
+                new_text = item_name
+                
+            # Only update if needed
+            if self.chat_listbox.get(i) != new_text:
+                self.chat_listbox.delete(i)
+                self.chat_listbox.insert(i, new_text)
+        
+        # Restore selection
+        if current_selection:
+            clean_selection = current_selection.split(" (")[0]
+            for i in range(self.chat_listbox.size()):
+                if self.chat_listbox.get(i).startswith(clean_selection):
+                    self.chat_listbox.selection_clear(0, tk.END)
+                    self.chat_listbox.selection_set(i)
+                    break
 
     def receive_message(self):
         while True:
@@ -138,16 +218,48 @@ class ClientClientGUI:
                     self.update_user_list(user_list)
                     continue
 
-                self.chat_box.configure(state='normal')
-                self.chat_box.insert(tk.END, msg + '\n')
-                self.chat_box.see(tk.END)
-                self.chat_box.configure(state='disabled')
+                # Handle private messages
+                if msg.startswith("[Private from "):
+                    # Extract sender name from "[Private from username]"
+                    end_idx = msg.find("]")
+                    if end_idx != -1:
+                        sender = msg[len("[Private from "):]
+                        sender = sender[:sender.find("]")]
+                        
+                        # Message without the prefix
+                        content = msg[end_idx + 2:]  # +2 to skip "] "
+                        
+                        # Add message to the private chat history
+                        self.add_message_to_history(sender, f"{sender}: {content}")
+                        continue
+                
+                # Handle private message confirmations
+                if msg.startswith("[Private to "):
+                    # Extract recipient name from "[Private to username]"
+                    end_idx = msg.find("]")
+                    if end_idx != -1:
+                        recipient = msg[len("[Private to "):]
+                        recipient = recipient[:recipient.find("]")]
+                        
+                        # Message without the prefix
+                        content = msg[end_idx + 2:]  # +2 to skip "] "
+                        
+                        # Add message to the private chat history
+                        self.add_message_to_history(recipient, f"You: {content}")
+                        continue
+
+                # Handle system messages (join/leave notifications)
+                if msg.startswith("*** "):
+                    # Add to group chat
+                    self.add_message_to_history("Group Chat", msg)
+                    continue
+                
+                # Normal group message
+                self.add_message_to_history("Group Chat", msg)
 
             except Exception as e:
-                self.chat_box.configure(state='normal')
-                self.chat_box.insert(tk.END, f"[Error receiving] {e}\n")
-                self.chat_box.see(tk.END)
-                self.chat_box.configure(state='disabled')
+                error_msg = f"[Error receiving] {e}"
+                self.add_message_to_history(self.current_chat, error_msg)
                 break
         
         self.status_var.set("Disconnected from server")
@@ -157,7 +269,13 @@ class ClientClientGUI:
         selected_index = self.chat_listbox.curselection()
         current_selection = None
         if selected_index:
-            current_selection = self.chat_listbox.get(selected_index[0])
+            current_selection = self.chat_listbox.get(selected_index[0]).split(" (")[0]  # Remove unread count
+        
+        # Get current users (without unread counts)
+        current_users = []
+        for i in range(1, self.chat_listbox.size()):  # Skip "Group Chat"
+            item = self.chat_listbox.get(i).split(" (")[0]  # Remove unread count
+            current_users.append(item)
         
         # Clear all except Group Chat
         self.chat_listbox.delete(1, tk.END)
@@ -165,12 +283,18 @@ class ClientClientGUI:
         # Add all users except self
         for user in usernames:
             if user and user != self.name:
-                self.chat_listbox.insert(tk.END, user)
+                # Check if user has unread messages
+                unread = self.unread_messages[user]
+                if unread > 0:
+                    self.chat_listbox.insert(tk.END, f"{user} ({unread})")
+                else:
+                    self.chat_listbox.insert(tk.END, user)
         
         # Try to restore selection
         if current_selection:
             for i in range(self.chat_listbox.size()):
-                if self.chat_listbox.get(i) == current_selection:
+                item = self.chat_listbox.get(i).split(" (")[0]  # Remove unread count
+                if item == current_selection:
                     self.chat_listbox.selection_clear(0, tk.END)
                     self.chat_listbox.selection_set(i)
                     break
