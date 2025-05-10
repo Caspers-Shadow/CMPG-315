@@ -1,120 +1,146 @@
+#!/usr/bin/env python3
+
 import tkinter as tk
 from tkinter.scrolledtext import ScrolledText
 from tkinter import simpledialog, messagebox
 import threading
 import socket
 
-class ClientClientGUI:
-    def __init__(self, master):
+class ChatClientGUI:
+    def __init__(self, master):  # Fixed: Changed _init_ to __init__ with double underscores
         self.master = master
         master.title("Chat Client")
-        
-        self.server_ip = "192.168.0.26"
-            
-        # Get username from user
+
+        # Default settings
+        self.server_ip = "192.168.0.26"  # Replace with your server IP
+        self.port = 12345
         self.name = simpledialog.askstring("Username", "Enter your name")
         if not self.name:
-            messagebox.showerror("Error", "No username provided. Using Anonymous.")
             self.name = "Anonymous"
-        
-        # Layout design
+
+        # Message targets
+        self.current_chat = "Group Chat"
+
+        # Layout
         self.frame = tk.Frame(master)
         self.frame.pack(fill='both', expand=True)
-        
-        # Left panel for chat list
+
         self.chat_listbox = tk.Listbox(self.frame, width=20)
         self.chat_listbox.pack(side='left', fill='y')
-        
-        # Add initial group chat
         self.chat_listbox.insert(tk.END, "Group Chat")
-        self.chat_listbox.select_set(0)  # Chooses the Group Chat option by default
-        
-        # Right panel for chat messages
+        self.chat_listbox.select_set(0)
+        self.chat_listbox.bind('<<ListboxSelect>>', self.change_chat)
+
         self.right_panel = tk.Frame(self.frame)
         self.right_panel.pack(side='right', fill='both', expand=True)
-        
-        # Status bar
+
         self.status_var = tk.StringVar()
-        self.status_var.set("Connecting to server...")
+        self.status_var.set("Connecting...")
         self.status_bar = tk.Label(self.right_panel, textvariable=self.status_var, bd=1, relief=tk.SUNKEN, anchor=tk.W)
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
-        
+
         self.chat_box = ScrolledText(self.right_panel, state="disabled")
         self.chat_box.pack(fill='both', expand=True)
-        
+
         self.entry = tk.Entry(self.right_panel)
         self.entry.pack(fill='x')
         self.entry.bind("<Return>", self.send_message)
-        
-        # Socket setup with connection timeout
-        self.connect_to_server()
-    
-    def connect_to_server(self):
+
+        # Networking
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.sock.settimeout(5)  # 5-second timeout for connection
-            self.sock.connect((self.server_ip, 12345))
-            self.sock.settimeout(None)  # Remove timeout for regular operation
-            
-            # Send username to server
+            self.sock.connect((self.server_ip, self.port))
             self.sock.sendall(self.name.encode('utf-8'))
-            
-            # Update status
-            self.status_var.set(f"Connected to {self.server_ip} as {self.name}")
-            
-            # Start receiving thread
-            threading.Thread(target=self.receive_message, daemon=True).start()
-            
+            self.status_var.set(f"Connected as {self.name}")
         except Exception as e:
-            messagebox.showerror("Connection Error", f"Could not connect to server: {e}")
-            self.status_var.set(f"Not connected. {e}")
-            self.master.after(2000, self.master.destroy)  # Close after 2 seconds
-    
+            messagebox.showerror("Connection Error", f"Could not connect: {e}")
+            master.destroy()
+            return
+
+        # Start receiving thread
+        threading.Thread(target=self.receive_message, daemon=True).start()
+
+    def change_chat(self, event=None):
+        selection = self.chat_listbox.curselection()
+        if selection:
+            self.current_chat = self.chat_listbox.get(selection[0])
+            self.chat_box.configure(state='normal')
+            self.chat_box.insert(tk.END, f"\n--- Now chatting with {self.current_chat} ---\n")
+            self.chat_box.see(tk.END)  # Ensure the message is visible
+            self.chat_box.configure(state='disabled')
+
     def send_message(self, event=None):
-        # Only proceed if there is text entered
         message_text = self.entry.get()
         if not message_text.strip():
-            return  # stops sending empty messages
-            
-        msg = f"{self.name}: {message_text}"
+            return
+
+        if self.current_chat == "Group Chat":
+            msg = f"{self.name}: {message_text}"
+        else:
+            msg = f"/pm {self.current_chat} {self.name}: {message_text}"
+
         try:
             self.sock.sendall(msg.encode('utf-8'))
             self.entry.delete(0, tk.END)
         except Exception as e:
             self.chat_box.configure(state='normal')
-            self.chat_box.insert(tk.END, f"Error sending message: {e}\n")
+            self.chat_box.insert(tk.END, f"Error sending: {e}\n")
             self.chat_box.see(tk.END)
             self.chat_box.configure(state='disabled')
-            self.status_var.set("Disconnected from server")
-            
-        return "break"  # This prevents the default behavior of adding a newline
-   
+
+        return "break"
+
     def receive_message(self):
         while True:
             try:
                 msg = self.sock.recv(1024).decode('utf-8')
-                if not msg:  # Check if message is empty (connection closed)
-                    self.status_var.set("Server connection closed")
+                if not msg:
                     break
-                    
+
+                # Check if it's a user list update
+                if msg.startswith("/users "):
+                    user_list = msg[len("/users "):].split(",")
+                    self.update_user_list(user_list)
+                    continue
+
                 self.chat_box.configure(state='normal')
-                self.chat_box.insert(tk.END, msg + '\n')
-                self.chat_box.see(tk.END)  # Auto-scroll to the latest message
+                self.chat_box.insert(tk.END, msg + "\n")
+                self.chat_box.see(tk.END)
                 self.chat_box.configure(state='disabled')
             except Exception as e:
                 self.chat_box.configure(state='normal')
                 self.chat_box.insert(tk.END, f"Error receiving: {e}\n")
                 self.chat_box.see(tk.END)
                 self.chat_box.configure(state='disabled')
-                self.status_var.set(f"Connection error: {e}")
                 break
         
+        # Update status when disconnected
         self.status_var.set("Disconnected from server")
+
+    def update_user_list(self, usernames):
+        current_selection = self.chat_listbox.curselection()  # Fixed: Use curselection instead of get(tk.ACTIVE)
+        current_chat = None
+        if current_selection:
+            current_chat = self.chat_listbox.get(current_selection[0])
+            
+        self.chat_listbox.delete(1, tk.END)  # Clear old names except Group Chat
+        
+        for user in usernames:
+            if user and user != self.name:
+                self.chat_listbox.insert(tk.END, user)
+                
+        # Try to maintain the previous selection
+        if current_chat and current_chat != "Group Chat":
+            for i in range(1, self.chat_listbox.size()):
+                if self.chat_listbox.get(i) == current_chat:
+                    self.chat_listbox.selection_clear(0, tk.END)
+                    self.chat_listbox.select_set(i)
+                    break
 
 def main():
     root = tk.Tk()
-    root.geometry("800x600")  # Set initial window size
-    app = ClientClientGUI(root)
+    root.geometry("800x600")
+    app = ChatClientGUI(root)
     root.mainloop()
 
 if __name__ == "__main__":
