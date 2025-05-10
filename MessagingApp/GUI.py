@@ -74,30 +74,48 @@ class ClientClientGUI:
 
         # Initialize unread message counter
         self.unread_messages = defaultdict(int)
+        
+        # Flag to prevent double processing of sent messages
+        self.message_sent = False
+
+        # Initialize chat history with welcome messages
+        self.chat_histories["Group Chat"].append("--- Welcome to Group Chat ---")
+        
+        # Load initial chat history
+        self.load_chat_history("Group Chat")
 
         self.connect_to_server()
+    
+    def clean_chat_name(self, chat_name):
+        """Remove unread count from chat name"""
+        return chat_name.split(" (")[0]
     
     def change_chat(self, event=None):
         selection = self.chat_listbox.curselection()
         if selection:
-            previous_chat = self.current_chat
-            self.current_chat = self.chat_listbox.get(selection[0])
+            selected_item = self.chat_listbox.get(selection[0])
+            clean_name = self.clean_chat_name(selected_item)
             
             # Only update if there's a change
-            if previous_chat != self.current_chat:
-                self.chat_name_var.set(self.current_chat)
+            if clean_name != self.current_chat:
+                self.current_chat = clean_name
+                self.chat_name_var.set(clean_name)
                 
                 # Clear unread message count for this chat
-                self.unread_messages[self.current_chat] = 0
+                self.unread_messages[clean_name] = 0
                 self.update_chat_list_display()
                 
                 # Load this chat's history
-                self.load_chat_history(self.current_chat)
+                self.load_chat_history(clean_name)
     
     def load_chat_history(self, chat_name):
         """Load the chat history for the specified chat into the chat box"""
         self.chat_box.configure(state='normal')
         self.chat_box.delete(1.0, tk.END)
+        
+        # Initialize history for this chat if it doesn't exist
+        if not self.chat_histories[chat_name]:
+            self.chat_histories[chat_name].append(f"--- Beginning of conversation with {chat_name} ---")
         
         for message in self.chat_histories[chat_name]:
             self.chat_box.insert(tk.END, message + '\n')
@@ -128,18 +146,23 @@ class ClientClientGUI:
 
         try:
             if self.current_chat == "Group Chat":
+                # Mark that we're sending a message to prevent doubling
+                self.message_sent = True
+                
+                # Send to server
                 msg = f"{self.name}: {message_text}"
                 self.sock.sendall(msg.encode('utf-8'))
                 
-                # Add message to local chat history
-                self.add_message_to_history("Group Chat", f"You: {message_text}")
+                # Don't add to history here - it will come back from the server
             else:
                 # Format for private message
                 msg = f"@{self.current_chat}: {message_text}"
                 self.sock.sendall(msg.encode('utf-8'))
                 
-                # Add message to local chat history
-                self.add_message_to_history(self.current_chat, f"You: {message_text}")
+                # For private messages, we need to manually add our outgoing message
+                # to the chat history since the server confirmation comes in a different format
+                display_msg = f"You: {message_text}"
+                self.add_message_to_history(self.current_chat, display_msg)
             
             self.entry.delete(0, tk.END)
         except Exception as e:
@@ -147,10 +170,18 @@ class ClientClientGUI:
             self.add_message_to_history(self.current_chat, error_msg)
             self.status_var.set("Disconnected")
         
+        # Reset the message sent flag after a short delay
+        self.master.after(100, self.reset_message_sent_flag)
+        
         return "break"  # Stops default Enter key behavior
+    
+    def reset_message_sent_flag(self):
+        """Reset the message sent flag after a delay"""
+        self.message_sent = False
 
     def add_message_to_history(self, chat_name, message):
         """Add a message to the specified chat history and update display if it's the current chat"""
+        # Add message to chat history
         self.chat_histories[chat_name].append(message)
         
         # If this is the current chat, update the display
@@ -169,37 +200,28 @@ class ClientClientGUI:
         selected_index = self.chat_listbox.curselection()
         current_selection = None
         if selected_index:
-            current_selection = self.chat_listbox.get(selected_index[0])
-        
-        # Remember all items
-        items = [self.chat_listbox.get(i) for i in range(self.chat_listbox.size())]
-        clean_items = {}
-        
-        # Clean up item names (remove unread count)
-        for item in items:
-            clean_name = item.split(" (")[0]  # Remove any " (N)" suffix
-            clean_items[clean_name] = item
+            current_selection = self.clean_chat_name(self.chat_listbox.get(selected_index[0]))
         
         # Update items with unread counts
         for i in range(self.chat_listbox.size()):
-            item_name = self.chat_listbox.get(i).split(" (")[0]  # Get name without unread count
-            unread = self.unread_messages[item_name]
+            item = self.chat_listbox.get(i)
+            clean_name = self.clean_chat_name(item)
+            unread = self.unread_messages[clean_name]
             
             if unread > 0:
-                new_text = f"{item_name} ({unread})"
+                new_text = f"{clean_name} ({unread})"
             else:
-                new_text = item_name
+                new_text = clean_name
                 
             # Only update if needed
-            if self.chat_listbox.get(i) != new_text:
+            if item != new_text:
                 self.chat_listbox.delete(i)
                 self.chat_listbox.insert(i, new_text)
         
         # Restore selection
         if current_selection:
-            clean_selection = current_selection.split(" (")[0]
             for i in range(self.chat_listbox.size()):
-                if self.chat_listbox.get(i).startswith(clean_selection):
+                if self.clean_chat_name(self.chat_listbox.get(i)) == current_selection:
                     self.chat_listbox.selection_clear(0, tk.END)
                     self.chat_listbox.selection_set(i)
                     break
@@ -218,9 +240,9 @@ class ClientClientGUI:
                     self.update_user_list(user_list)
                     continue
 
-                # Handle private messages
+                # Handle private messages - messages received from others
                 if msg.startswith("[Private from "):
-                    # Extract sender name from "[Private from username]"
+                    # Extract sender name
                     end_idx = msg.find("]")
                     if end_idx != -1:
                         sender = msg[len("[Private from "):]
@@ -230,23 +252,15 @@ class ClientClientGUI:
                         content = msg[end_idx + 2:]  # +2 to skip "] "
                         
                         # Add message to the private chat history
-                        self.add_message_to_history(sender, f"{sender}: {content}")
-                        continue
+                        display_msg = f"{sender}: {content}"
+                        self.add_message_to_history(sender, display_msg)
+                    continue
                 
-                # Handle private message confirmations
+                # Handle private message confirmations - our messages sent to others
                 if msg.startswith("[Private to "):
-                    # Extract recipient name from "[Private to username]"
-                    end_idx = msg.find("]")
-                    if end_idx != -1:
-                        recipient = msg[len("[Private to "):]
-                        recipient = recipient[:recipient.find("]")]
-                        
-                        # Message without the prefix
-                        content = msg[end_idx + 2:]  # +2 to skip "] "
-                        
-                        # Add message to the private chat history
-                        self.add_message_to_history(recipient, f"You: {content}")
-                        continue
+                    # We already added this message in the send_message method
+                    # So we don't need to process it again here
+                    continue
 
                 # Handle system messages (join/leave notifications)
                 if msg.startswith("*** "):
@@ -254,7 +268,14 @@ class ClientClientGUI:
                     self.add_message_to_history("Group Chat", msg)
                     continue
                 
-                # Normal group message
+                # Handle our own messages in group chat - avoid duplication
+                if msg.startswith(f"{self.name}: ") and self.message_sent:
+                    # Replace with "You: " format for consistency
+                    display_msg = "You: " + msg[len(f"{self.name}: "):]
+                    self.add_message_to_history("Group Chat", display_msg)
+                    continue
+                
+                # Normal group message from others
                 self.add_message_to_history("Group Chat", msg)
 
             except Exception as e:
@@ -269,13 +290,12 @@ class ClientClientGUI:
         selected_index = self.chat_listbox.curselection()
         current_selection = None
         if selected_index:
-            current_selection = self.chat_listbox.get(selected_index[0]).split(" (")[0]  # Remove unread count
+            current_selection = self.clean_chat_name(self.chat_listbox.get(selected_index[0]))
         
-        # Get current users (without unread counts)
-        current_users = []
+        # Store existing users for comparison
+        existing_users = set()
         for i in range(1, self.chat_listbox.size()):  # Skip "Group Chat"
-            item = self.chat_listbox.get(i).split(" (")[0]  # Remove unread count
-            current_users.append(item)
+            existing_users.add(self.clean_chat_name(self.chat_listbox.get(i)))
         
         # Clear all except Group Chat
         self.chat_listbox.delete(1, tk.END)
@@ -283,6 +303,10 @@ class ClientClientGUI:
         # Add all users except self
         for user in usernames:
             if user and user != self.name:
+                # Initialize chat history if it's a new user
+                if user not in existing_users and not self.chat_histories[user]:
+                    self.chat_histories[user].append(f"--- Beginning of conversation with {user} ---")
+                
                 # Check if user has unread messages
                 unread = self.unread_messages[user]
                 if unread > 0:
@@ -293,8 +317,7 @@ class ClientClientGUI:
         # Try to restore selection
         if current_selection:
             for i in range(self.chat_listbox.size()):
-                item = self.chat_listbox.get(i).split(" (")[0]  # Remove unread count
-                if item == current_selection:
+                if self.clean_chat_name(self.chat_listbox.get(i)) == current_selection:
                     self.chat_listbox.selection_clear(0, tk.END)
                     self.chat_listbox.selection_set(i)
                     break
