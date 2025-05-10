@@ -10,31 +10,54 @@ class ClientClientGUI:
         self.master = master
         master.title("Chat Client")
 
-        self.chat_box = ScrolledText(master,state = "disabled")
-        self.chat_box.pack()
+        #Layout design
+        self.frame = tk.Frame(master)
+        self.frame.pack(fill = 'both', expand = True)
 
-        self.entry = tk.Entry(master)
+        #Left panel for chat list
+        self.chat_listbox = tk.Listbox(self.frame, width = 20)
+        self.chat_listbox.pack(side = 'left', fill = 'y')
+
+        #Add initial group chat
+        self.chat_listbox.insert(tk.END, "Group Chat")
+        self.chat_listbox.select_set(0) # Chooses the Group Chat option by default
+
+        #RIght panel for chat messages
+        self.right_panel = tk.Frame(self.frame)
+        self.right_panel.pack(side = 'right', fill = 'both', expand = True)
+
+        self.chat_box = ScrolledText(self.right_panel, state = "disabled")
+        self.chat_box.pack(fill = 'both', expand = True)
+
+        self.entry = tk.Entry(self.right_panel)
         self.entry.pack(fill = 'x')
         self.entry.bind("<Return>", self.send_message)
 
+        #Socket setup
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.connect(("192.168.0.38",12345))
-
-        #Send username data first
+        self.sock.connect(("192.168.0.38",12345)) #Place where server connections occur
         self.sock.sendall(self.name.encode('utf-8'))
 
-        #Start receiving thread
+        #Start receiving thread stuff
         threading.Thread(target = self.receive_message, daemon = True).start()
 
     def send_message(self, event = None):
-        msg = f"{self.name}: {self.entry.get()}"
+        #Only proceed if there is text entered
+        message_text = self.entry.get()
+        if not message_text.strip():
+            return #stops sending empty messages
+
+
+        msg = f"{self.name}: {message_text}"
         self.sock.sendall(msg.encode('utf-8'))
         self.entry.delete(0,tk.END)
 
         #Display own messages immediatly
-        self.chat_box.configure(state = "normal")
-        self.chat_box.insert(tk.END, message + "\n")
-        self.chat_box.configure(state="disabled")
+        #self.chat_box.configure(state = "normal")
+        #self.chat_box.insert(tk.END, msg + "\n")
+       # self.chat_box.configure(state="disabled")
+
+        return "break"
     
     def receive_message(self):
         while True:
