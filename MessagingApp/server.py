@@ -9,6 +9,12 @@ PORT = 12345
 
 clients = {} #key = username, value = socket
 
+def get_public_ip():
+	try: 
+		return requests.get('https//api.ipify.org').text
+	except:
+		return "Could not retrieve public IP"
+
 def handle_client(conn, addr):
 
 	print(f"[NEW CONNECTION] {addr} connected.")
@@ -36,6 +42,10 @@ def handle_client(conn, addr):
 		conn.close()
 		
 def start_server():
+	public_ip = get_public_ip()
+	print(f"[STARTING] Server is starting")
+	print(f"[PUBLIC IP] Share this with clients: {public_ip}")
+
 	server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 	server.bind((HOST, PORT))
 	server.listen()
