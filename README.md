@@ -24,11 +24,14 @@ You wake up in a cozy digital forest 🌲.
 ### 🔧 Code Cave
 
 💥 A wild bug appears!
+```csharp
+
 try {
 fixBug();
 } catch (panic) {
 breathe();
 }
+```
 
 ⬅️ [Back](#🎮-cmpg-315-mini-adventure-game)
 
@@ -36,11 +39,13 @@ breathe();
 
 ### 🌿 Logic Forest
 
+```javascript
 if (hungry) {
 eat();
 } else {
 keepCoding();
 }
+```
 
 ⬅️ [Back](#🎮-cmpg-315-mini-adventure-game)
 
