@@ -1,23 +1,194 @@
 import tkinter as tk
 from tkinter.scrolledtext import ScrolledText
-from tkinter import simpledialog, messagebox
+from tkinter import simpledialog, messagebox, ttk
 import threading
 import socket
 from collections import defaultdict
+import time
 
 class ClientClientGUI:
     def __init__(self, master):
         self.master = master
         master.title("Chat Client")
         
-        self.server_ip = "192.168.0.26"  # replace with server IP if needed
-
+        self.server_ip = None
+        self.server_port = 12345
+        self.broadcast_port = 12346
+        
+        # Create a frame for connection options
+        self.connect_frame = tk.Frame(master)
+        self.connect_frame.pack(fill='both', expand=True, padx=20, pady=20)
+        
+        # Title
+        tk.Label(self.connect_frame, text="Chat Client", font=("Arial", 16, "bold")).pack(pady=(0, 20))
+        
+        # Create connection options
+        self.connection_var = tk.StringVar(value="auto")
+        
+        tk.Radiobutton(
+            self.connect_frame, 
+            text="Auto-discover server", 
+            variable=self.connection_var, 
+            value="auto",
+            command=self.toggle_connect_options
+        ).pack(anchor=tk.W, pady=5)
+        
+        tk.Radiobutton(
+            self.connect_frame, 
+            text="Connect to specific IP", 
+            variable=self.connection_var, 
+            value="manual",
+            command=self.toggle_connect_options
+        ).pack(anchor=tk.W, pady=5)
+        
+        # IP input frame
+        self.ip_frame = tk.Frame(self.connect_frame)
+        self.ip_frame.pack(fill='x', pady=5)
+        
+        tk.Label(self.ip_frame, text="Server IP:").pack(side='left')
+        self.ip_entry = tk.Entry(self.ip_frame, width=15)
+        self.ip_entry.pack(side='left', padx=5)
+        self.ip_entry.insert(0, "192.168.0.26")  # Default IP
+        self.ip_entry.config(state='disabled')  # Disabled by default when auto is selected
+        
+        # Status message for auto-discovery
+        self.status_label = tk.Label(self.connect_frame, text="", font=("Arial", 10))
+        self.status_label.pack(pady=10)
+        
+        # Connect button
+        self.connect_button = tk.Button(self.connect_frame, text="Connect", command=self.start_connection)
+        self.connect_button.pack(pady=10)
+        
+        # Server discovery progress
+        self.progress = ttk.Progressbar(self.connect_frame, orient="horizontal", length=300, mode="indeterminate")
+        
+        # Discovered servers list
+        self.servers_frame = tk.Frame(self.connect_frame)
+        self.servers_label = tk.Label(self.servers_frame, text="Discovered Servers:")
+        self.servers_label.pack(anchor=tk.W)
+        self.servers_listbox = tk.Listbox(self.servers_frame, height=5, width=40)
+        self.servers_listbox.pack(fill='both', expand=True)
+        
+        # Store discovered servers
+        self.discovered_servers = {}  # {display_name: (ip, port)}
+        
+        # Auto-discover as default
+        self.toggle_connect_options()
+        
+    def toggle_connect_options(self):
+        mode = self.connection_var.get()
+        if mode == "auto":
+            self.ip_entry.config(state='disabled')
+            self.status_label.config(text="Will auto-discover servers on the network")
+            self.servers_frame.pack(fill='both', expand=True, pady=10)
+            self.start_auto_discovery()
+        else:
+            self.ip_entry.config(state='normal')
+            self.status_label.config(text="Enter server IP address manually")
+            self.servers_frame.pack_forget()
+            self.stop_auto_discovery()
+    
+    def start_auto_discovery(self):
+        """Start auto-discovery of chat servers"""
+        self.discovery_active = True
+        self.progress.pack(pady=10)
+        self.progress.start()
+        
+        # Clear server list
+        self.servers_listbox.delete(0, tk.END)
+        self.discovered_servers.clear()
+        
+        # Start discovery thread
+        self.discovery_thread = threading.Thread(target=self.discover_servers, daemon=True)
+        self.discovery_thread.start()
+    
+    def stop_auto_discovery(self):
+        """Stop auto-discovery of chat servers"""
+        self.discovery_active = False
+        self.progress.stop()
+        self.progress.pack_forget()
+    
+    def discover_servers(self):
+        """Listen for server broadcasts"""
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(('', self.broadcast_port))
+            sock.settimeout(1)  # 1 second timeout for checking discovery_active flag
+            
+            while self.discovery_active:
+                try:
+                    data, addr = sock.recvfrom(1024)
+                    message = data.decode('utf-8')
+                    
+                    # Parse server info (format: "CHAT_SERVER:IP:PORT")
+                    if message.startswith("CHAT_SERVER:"):
+                        parts = message.split(":")
+                        if len(parts) >= 3:
+                            server_ip = parts[1]
+                            server_port = int(parts[2])
+                            
+                            # Add to discovered servers list if not already there
+                            display_name = f"{server_ip}:{server_port}"
+                            if display_name not in self.discovered_servers:
+                                self.discovered_servers[display_name] = (server_ip, server_port)
+                                self.master.after(0, lambda: self.add_server_to_list(display_name))
+                except socket.timeout:
+                    continue  # Just check the discovery_active flag
+                except Exception as e:
+                    print(f"Discovery error: {e}")
+        except Exception as e:
+            print(f"Discovery socket error: {e}")
+        finally:
+            sock.close()
+    
+    def add_server_to_list(self, server_name):
+        """Add discovered server to the listbox"""
+        # Check if already in list
+        for i in range(self.servers_listbox.size()):
+            if self.servers_listbox.get(i) == server_name:
+                return
+        
+        self.servers_listbox.insert(tk.END, server_name)
+        # Select first server if this is the first one
+        if self.servers_listbox.size() == 1:
+            self.servers_listbox.selection_set(0)
+    
+    def start_connection(self):
+        """Start connection based on selected method"""
+        # Get username first
         self.name = simpledialog.askstring("Username", "Enter your name")
         if not self.name:
             messagebox.showerror("Error", "No username provided. Using Anonymous.")
             self.name = "Anonymous"
         
-        self.frame = tk.Frame(master)
+        # Get server IP based on connection method
+        if self.connection_var.get() == "auto":
+            # Get selected server from listbox
+            selection = self.servers_listbox.curselection()
+            if not selection:
+                messagebox.showerror("Error", "Please select a server or wait for discovery")
+                return
+            
+            server_name = self.servers_listbox.get(selection[0])
+            self.server_ip, self.server_port = self.discovered_servers[server_name]
+        else:
+            # Manual IP entry
+            self.server_ip = self.ip_entry.get().strip()
+            if not self.server_ip:
+                messagebox.showerror("Error", "Please enter a server IP")
+                return
+        
+        # Stop discovery and clear connection frame
+        self.stop_auto_discovery()
+        self.connect_frame.destroy()
+        
+        # Initialize chat UI
+        self.initialize_chat_ui()
+    
+    def initialize_chat_ui(self):
+        """Initialize the chat UI after connection details are set"""
+        self.frame = tk.Frame(self.master)
         self.frame.pack(fill='both', expand=True)
 
         # User list with label
@@ -47,7 +218,7 @@ class ClientClientGUI:
         self.chat_name_var = tk.StringVar()
         self.chat_name_var.set("Group Chat")
         self.chat_name_label = tk.Label(self.right_panel, textvariable=self.chat_name_var, 
-                                       font=("Arial", 12, "bold"), anchor=tk.W)
+                                      font=("Arial", 12, "bold"), anchor=tk.W)
         self.chat_name_label.pack(fill='x')
 
         # Chat box
@@ -69,7 +240,7 @@ class ClientClientGUI:
         self.status_var = tk.StringVar()
         self.status_var.set("Connecting to server...")
         self.status_bar = tk.Label(self.right_panel, textvariable=self.status_var, bd=1, 
-                                  relief=tk.SUNKEN, anchor=tk.W)
+                                 relief=tk.SUNKEN, anchor=tk.W)
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
         # Initialize unread message counter
@@ -84,6 +255,7 @@ class ClientClientGUI:
         # Load initial chat history
         self.load_chat_history("Group Chat")
 
+        # Connect to server
         self.connect_to_server()
     
     def clean_chat_name(self, chat_name):
@@ -127,12 +299,12 @@ class ClientClientGUI:
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sock.settimeout(5)
-            self.sock.connect((self.server_ip, 12345))
+            self.sock.connect((self.server_ip, self.server_port))
             self.sock.settimeout(None)
 
             self.sock.sendall(self.name.encode('utf-8'))
 
-            self.status_var.set(f"Connected to {self.server_ip} as {self.name}")
+            self.status_var.set(f"Connected to {self.server_ip}:{self.server_port} as {self.name}")
             threading.Thread(target=self.receive_message, daemon=True).start()
         except Exception as e:
             messagebox.showerror("Connection Error", f"Could not connect: {e}")

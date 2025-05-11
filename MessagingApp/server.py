@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
-# server.py
 import socket
 import threading
+import time
 
 HOST = '0.0.0.0'
 PORT = 12345
+BROADCAST_PORT = 12346
 clients = {}  # username: connection
 
 def get_local_ip():
@@ -16,6 +16,27 @@ def get_local_ip():
         return ip
     except:
         return "127.0.0.1"
+
+def broadcast_server_ip():
+    """Broadcast server IP periodically for auto-discovery"""
+    ip = get_local_ip()
+    print(f"[BROADCASTING] Server IP: {ip} on port {BROADCAST_PORT}")
+    
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    s.bind(('', 0))  # Bind to any available port
+    
+    # Broadcast message format: "CHAT_SERVER:IP:PORT"
+    message = f"CHAT_SERVER:{ip}:{PORT}".encode('utf-8')
+    
+    try:
+        while True:
+            s.sendto(message, ('<broadcast>', BROADCAST_PORT))
+            time.sleep(2)  # Broadcast every 2 seconds
+    except Exception as e:
+        print(f"[ERROR] Broadcasting stopped: {e}")
+    finally:
+        s.close()
 
 def handle_client(conn, addr):
     print(f"[NEW CONNECTION] {addr} connected.")
@@ -74,7 +95,7 @@ def handle_client(conn, addr):
                     conn.sendall("Error processing private message.".encode('utf-8'))
             else:
                 # Normal broadcast message
-                broadcast(msg)
+                broadcast(f"{username}: {msg}")
     except Exception as e:
         print(f"[ERROR] {username} | {e}")
     finally:
@@ -119,12 +140,16 @@ def start_server():
     print(f"[LISTENING] Server is listening on port {PORT}")
     print(f"[INFO] Clients should connect to {ip}:{PORT}")
     
+    # Start broadcasting server IP for auto-discovery
+    broadcast_thread = threading.Thread(target=broadcast_server_ip, daemon=True)
+    broadcast_thread.start()
+    
     while True:
         try:
             conn, addr = server.accept()
             thread = threading.Thread(target=handle_client, args=(conn, addr), daemon=True)
             thread.start()
-            print(f"[ACTIVE CONNECTIONS] {threading.active_count() - 1}")
+            print(f"[ACTIVE CONNECTIONS] {threading.active_count() - 2}")  # -2 for main and broadcast threads
         except Exception as e:
             print(f"Error accepting connection: {e}")
 
