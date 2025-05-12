@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import simpledialog, scrolledtext
 import socketio
 import threading
+import requests
 
 # --- CLIENT SETUP ---
 sio = socketio.Client()
@@ -13,26 +14,33 @@ class ChatClientGUI:
         self.master = master
         master.title("Socket.IO Chat")
 
-        self.username_frame = tk.Frame(master)
+        # Main window styling
+        master.geometry("500x500")
+        master.configure(bg="#f0f0f0")  # Light grey background
+        master.resizable(False, False)  # Disable resizing
+
+        # Username input frame
+        self.username_frame = tk.Frame(master, bg="#f0f0f0")
         self.username_frame.pack(pady=10)
 
-        self.username_label = tk.Label(self.username_frame, text="Enter your username:")
+        self.username_label = tk.Label(self.username_frame, text="Enter your username:", font=("Helvetica", 12), bg="#f0f0f0")
         self.username_label.pack(side=tk.LEFT)
 
-        self.username_entry = tk.Entry(self.username_frame)
+        self.username_entry = tk.Entry(self.username_frame, font=("Helvetica", 12))
         self.username_entry.pack(side=tk.LEFT)
 
-        self.username_button = tk.Button(self.username_frame, text="Submit", command=self.submit_username)
+        self.username_button = tk.Button(self.username_frame, text="Submit", font=("Helvetica", 12), bg="#4CAF50", fg="white", command=self.submit_username)
         self.username_button.pack(side=tk.LEFT)
 
         # Chat UI elements (hidden until username is submitted)
-        self.text_area = scrolledtext.ScrolledText(master, wrap=tk.WORD, state='disabled', height=20, width=50)
+        self.text_area = scrolledtext.ScrolledText(master, wrap=tk.WORD, state='disabled', height=15, width=50, font=("Helvetica", 12), bg="#ffffff", fg="#333333")
         self.text_area.pack(padx=10, pady=10)
 
-        self.entry = tk.Entry(master, width=40)
+        # Input area
+        self.entry = tk.Entry(master, width=40, font=("Helvetica", 12))
         self.entry.pack(side=tk.LEFT, padx=(10, 0), pady=(0, 10))
 
-        self.send_button = tk.Button(master, text="Send", command=self.send_message)
+        self.send_button = tk.Button(master, text="Send", font=("Helvetica", 12), bg="#4CAF50", fg="white", command=self.send_message)
         self.send_button.pack(side=tk.LEFT, padx=(5, 10), pady=(0, 10))
 
     def submit_username(self):
@@ -62,9 +70,10 @@ class ChatClientGUI:
 
     def display_message(self, msg):
         self.text_area.configure(state='normal')
-        self.text_area.insert(tk.END, msg + '\n')
+        # Create "bubbles" for messages
+        self.text_area.insert(tk.END, f"{msg}\n")
         self.text_area.configure(state='disabled')
-        self.text_area.see(tk.END)
+        self.text_area.see(tk.END)  # Auto-scroll to the bottom
 
     def connect_to_server(self):
         try:
@@ -86,7 +95,7 @@ def connect():
 
 @sio.on('message')
 def on_message(data):
-    gui.display_message(data)
+    gui.display_message(f"{data}")
 
 
 @sio.event
@@ -107,4 +116,3 @@ def start_gui():
 
 if __name__ == "__main__":
     start_gui()
-
