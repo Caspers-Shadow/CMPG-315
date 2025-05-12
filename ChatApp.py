@@ -1,87 +1,110 @@
-# --- SERVER SECTION ---
-from flask import Flask, request
-from flask_socketio import SocketIO, emit
-import threading
+import tkinter as tk
+from tkinter import simpledialog, scrolledtext
 import socketio
-import time
-import os
+import threading
 
-app = Flask(__name__)
-socketio_server = SocketIO(app, cors_allowed_origins="*")
+# --- CLIENT SETUP ---
+sio = socketio.Client()
+username = ""
 
-connected_users = {}  # username -> session ID
+# --- GUI SETUP ---
+class ChatClientGUI:
+    def __init__(self, master):
+        self.master = master
+        master.title("Socket.IO Chat")
 
+        self.username_frame = tk.Frame(master)
+        self.username_frame.pack(pady=10)
 
-@app.route('/')
-def index():
-    return "Chat server is up."
+        self.username_label = tk.Label(self.username_frame, text="Enter your username:")
+        self.username_label.pack(side=tk.LEFT)
 
+        self.username_entry = tk.Entry(self.username_frame)
+        self.username_entry.pack(side=tk.LEFT)
 
-@socketio_server.on('register')
-def register(username):
-    connected_users[username] = request.sid
-    print(f"{username} registered with SID {request.sid}")
+        self.username_button = tk.Button(self.username_frame, text="Submit", command=self.submit_username)
+        self.username_button.pack(side=tk.LEFT)
 
+        # Chat UI elements (hidden until username is submitted)
+        self.text_area = scrolledtext.ScrolledText(master, wrap=tk.WORD, state='disabled', height=20, width=50)
+        self.text_area.pack(padx=10, pady=10)
 
-@socketio_server.on('disconnect')
-def on_disconnect():
-    for user, sid in list(connected_users.items()):
-        if sid == request.sid:
-            del connected_users[user]
-            print(f"{user} disconnected")
-            break
+        self.entry = tk.Entry(master, width=40)
+        self.entry.pack(side=tk.LEFT, padx=(10, 0), pady=(0, 10))
 
+        self.send_button = tk.Button(master, text="Send", command=self.send_message)
+        self.send_button.pack(side=tk.LEFT, padx=(5, 10), pady=(0, 10))
 
-@socketio_server.on('group_message')
-def handle_group(data):
-    msg = f"[Group] {data['from']}: {data['message']}"
-    print(msg)
-    emit('message', msg, broadcast=True)
+    def submit_username(self):
+        global username
+        username = self.username_entry.get()
+        if username:
+            self.username_frame.pack_forget()  # Hide the username input frame
+            self.text_area.configure(state='normal')
+            self.text_area.insert(tk.END, f"[System] Username set to {username}.\n")
+            self.text_area.configure(state='disabled')
 
+            # Now connect to the server
+            self.connect_to_server()
 
-@socketio_server.on('private_message')
-def handle_private(data):
-    recipient = data['to']
-    msg = f"[Private] {data['from']} to {recipient}: {data['message']}"
-    print(msg)
-    if recipient in connected_users:
-        emit('message', msg, to=connected_users[recipient])
-    else:
-        emit('message', f"[Server] {recipient} is not online.", to=request.sid)
+    def send_message(self):
+        msg = self.entry.get()
+        self.entry.delete(0, tk.END)
 
-
-def run_server():
-    port = int(os.environ.get("PORT",10000))
-    socketio_server.run(app, host = "0.0.0.0", port = port)
-
-# --- TEST CLIENT SECTION (for local testing only) ---
-def run_test_client(username):
-    sio = socketio.Client()
-
-    @sio.event
-    def connect():
-        print(f"{username} connected to server.")
-        sio.emit('register', username)
-
-    @sio.on('message')
-    def message(data):
-        print(f"{username} received:", data)
-
-    sio.connect("https://new-chat-app-2wtj.onrender.com")  # <-- CHANGE THIS TO RENDER URL WHEN DEPLOYED
-
-    def send_loop():
-        while True:
-            msg = input(f"[{username}] Enter message ('/pm user message' or plain text): ")
-            if msg.startswith("/pm "):
+        if msg.startswith("/pm "):
+            try:
                 _, to_user, private_msg = msg.split(" ", 2)
                 sio.emit('private_message', {'from': username, 'to': to_user, 'message': private_msg})
-            else:
-                sio.emit('group_message', {'from': username, 'message': msg})
+            except ValueError:
+                self.display_message("[Error] Invalid private message format.")
+        else:
+            sio.emit('group_message', {'from': username, 'message': msg})
 
-    threading.Thread(target=send_loop).start()
-    sio.wait()
+    def display_message(self, msg):
+        self.text_area.configure(state='normal')
+        self.text_area.insert(tk.END, msg + '\n')
+        self.text_area.configure(state='disabled')
+        self.text_area.see(tk.END)
+
+    def connect_to_server(self):
+        try:
+            sio.connect("https://new-chat-app-2wtj.onrender.com")  # Change to your deployed server URL
+            sio.emit('register', username)  # Register after connecting
+        except Exception as e:
+            self.display_message(f"[Error] Could not connect: {e}")
+
+    def on_close(self):
+        sio.disconnect()
+        self.master.destroy()
 
 
-if __name__ == '__main__':
-    username = input("Enter your username: ")
-    run_test_client(username)  
+# --- SOCKET.IO EVENTS ---
+@sio.event
+def connect():
+    gui.display_message("[System] Connected to server.")
+
+
+@sio.on('message')
+def on_message(data):
+    gui.display_message(data)
+
+
+@sio.event
+def disconnect():
+    gui.display_message("[System] Disconnected from server.")
+
+
+def start_gui():
+    global gui
+    root = tk.Tk()
+
+    gui = ChatClientGUI(root)
+
+    # Connect to the server after username is submitted (this starts when you submit the username)
+    root.protocol("WM_DELETE_WINDOW", gui.on_close)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    start_gui()
+
