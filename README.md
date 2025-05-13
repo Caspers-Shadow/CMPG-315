@@ -26,7 +26,7 @@ This repository contains:
 👉 [Click here to view our project documentation](https://docs.google.com/document/d/1eODmNL1kfQpG9G1PcpU97Jj59zv7D1Z6P7PYc32K_xY/edit?tab=t.0#heading=h.z4vln8eols3)
 
 ---
-
+## 📈 GitHub Stats for individuals
 
 ![GitHub Stats](https://github-readme-stats.vercel.app/api?username=Caspers-Shadow&show_icons=true&theme=dracula)
 ![GitHub Stats](https://github-readme-stats.vercel.app/api?username=Pantoffel24&show_icons=true&theme=synthwave)
@@ -34,14 +34,25 @@ This repository contains:
 ![GitHub Stats](https://github-readme-stats.vercel.app/api?username=liat1604&show_icons=true&theme=radical)
 ![GitHub Stats](https://github-readme-stats.vercel.app/api?username=Mannus111&show_icons=true&theme=onedark)
 
-## 📈 GitHub Stats
 
+## 🧪 Top Languages (for every person)
+
+**Mariska**  
 ![Top Languages](https://github-readme-stats.vercel.app/api/top-langs/?username=Caspers-Shadow&layout=compact&theme=default)
 
+**Christoffel**  
+![Top Languages](https://github-readme-stats.vercel.app/api/top-langs/?username=Pantoffel24&layout=compact&theme=default)
+
+**Ethan**  
+![Top Languages](https://github-readme-stats.vercel.app/api/top-langs/?username=BanJovie&layout=compact&theme=default)
+
+**Lia**  
+![Top Languages](https://github-readme-stats.vercel.app/api/top-langs/?username=liat1604&layout=compact&theme=default)
+
+**Marnus**  
+![Top Languages](https://github-readme-stats.vercel.app/api/top-langs/?username=Mannus111&layout=compact&theme=default)
 
 
-
----
 
 ## 🙏 Thank You
 
