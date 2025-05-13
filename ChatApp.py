@@ -2,6 +2,8 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext, simpledialog
 import socketio
 import threading
+from PIL import Image, ImageTk
+
 
 # --- CLIENT SETUP ---
 sio = socketio.Client()
@@ -12,7 +14,7 @@ connected_users = []  # Track connected users
 class ChatClientGUI:
     def __init__(self, master):
         self.master = master
-        master.title("Socket.IO Chat")
+        master.title("Triple Dots (...)")
 
         # Main window styling
         master.geometry("700x500")
@@ -21,6 +23,16 @@ class ChatClientGUI:
         # Username input frame (initial view)
         self.username_frame = tk.Frame(master, bg="#f0f0f0")
         self.username_frame.pack(pady=10, fill=tk.BOTH, expand=True)
+        # Load and show logo image
+        try:
+            image = Image.open("logo.png")  # Adjust filename if needed
+            image = image.resize((150, 150), Image.Resampling.LANCZOS)  # Resize if desired
+            self.logo_image = ImageTk.PhotoImage(image)
+            self.logo_label = tk.Label(self.username_frame, image=self.logo_image, bg="#f0f0f0")
+            self.logo_label.pack(pady=(40, 20))
+        except Exception as e:
+            print(f"Logo load failed: {e}")
+
 
         self.username_label = tk.Label(self.username_frame, text="Enter your username:", 
                                     font=("Helvetica", 12), bg="#f0f0f0")
